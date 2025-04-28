@@ -31,7 +31,7 @@ def transform_player_data(players_df: pd.DataFrame) -> pd.DataFrame:
         'status_short_description', # active_status
         'entry_year',               # draft_year from entry_year
         'draft_number'              # draft_position from draft_number
-    ]]
+    ]].copy()
 
     # Add timestamps
     logger.debug("Adding timestamp fields")
