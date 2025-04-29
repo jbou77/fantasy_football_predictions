@@ -18,9 +18,10 @@ def update_players_table():
     """
     Complete process to update Players table:
     1. Truncate the existing table
-    2. Collect new data from NFL API
-    3. Transform the data
-    4. Upload to BigQuery
+    2. verify the table is empty
+    3. Collect new data from NFL API
+    4. Transform the data
+    5. Upload to BigQuery
     """
     logger.info("Starting Players table update process")
     
