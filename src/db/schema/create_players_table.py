@@ -52,7 +52,6 @@ def create_players_table(project_id: str, dataset_id: str):
         # Add table description
         table.description = "NFL player biographical and professional information including position, team, physical attributes, and draft details."
         table = client.create_table(table)
-
         print("Created Players table.")
 
 if __name__ == "__main__":
