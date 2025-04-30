@@ -14,6 +14,7 @@ def create_players_table(project_id: str, dataset_id: str):
         bigquery.SchemaField("last_name", "STRING"),
         bigquery.SchemaField("position", "STRING"),
         bigquery.SchemaField("team_id", "STRING"),
+        bigquery.SchemaField("team_abbr", "STRING"),  # Added team abbreviation
         bigquery.SchemaField("birth_date", "DATE"),
         bigquery.SchemaField("height", "FLOAT64"),
         bigquery.SchemaField("weight", "FLOAT64"),
@@ -33,4 +34,3 @@ def create_players_table(project_id: str, dataset_id: str):
         table = bigquery.Table(table_ref, schema=schema)
         table = client.create_table(table)
         print("Created Players table.")
-

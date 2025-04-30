@@ -24,6 +24,7 @@ def transform_player_data(players_df: pd.DataFrame) -> pd.DataFrame:
         'last_name',
         'position',
         'current_team_id',          # team_id
+        'team_abbr',             # team_abbr
         'birth_date',
         'height',
         'weight',
@@ -82,7 +83,8 @@ def transform_player_data(players_df: pd.DataFrame) -> pd.DataFrame:
         'first_name',
         'last_name',
         'position',
-        'team_id',       
+        'team_id',
+        'team_abbr',
         'birth_date',
         'height',
         'weight',
