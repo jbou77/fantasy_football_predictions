@@ -1,6 +1,10 @@
 from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
-from src.config.settings import PROJECT_ID
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+
+from src.config.settings import DATASET_ID, PROJECT_ID
 
 def create_players_table(project_id: str, dataset_id: str):
     """Create the Players table in BigQuery if it doesn't already exist."""
@@ -34,3 +38,7 @@ def create_players_table(project_id: str, dataset_id: str):
         table = client.create_table(table)
         print("Created Players table.")
 
+if __name__ == "__main__":
+    # You can specify specific seasons like [2020, 2021, 2022] as an argument
+    # or leave it as None to get the last 5 seasons
+    create_players_table(PROJECT_ID, DATASET_ID)
