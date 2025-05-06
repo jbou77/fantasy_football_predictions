@@ -40,6 +40,26 @@ def create_games_table(project_id: str, dataset_id: str):
                              description="Final score for the home team"),
         bigquery.SchemaField("away_score", "INT64",
                              description="Final score for the away team"),
+        bigquery.SchemaField("home_qb_id", "STRING",
+                             description="Player ID of the starting quarterback for the home team"),
+        bigquery.SchemaField("away_qb_id", "STRING",
+                             description="Player ID of the starting quarterback for the away team"),
+        bigquery.SchemaField("home_moneyline", "FLOAT64",
+                             description="Moneyline odds for the home team (American odds format)"),
+        bigquery.SchemaField("away_moneyline", "FLOAT64",
+                             description="Moneyline odds for the away team (American odds format)"),
+        bigquery.SchemaField("spread_line", "FLOAT64",
+                             description="Point spread line, negative value means home team is favored"),
+        bigquery.SchemaField("home_spread_odds", "FLOAT64",
+                             description="Odds for the home team against the spread (American odds format)"),
+        bigquery.SchemaField("away_spread_odds", "FLOAT64",
+                             description="Odds for the away team against the spread (American odds format)"),
+        bigquery.SchemaField("total_line", "FLOAT64",
+                             description="Over/under total points line for the game"),
+        bigquery.SchemaField("over_odds", "FLOAT64",
+                             description="Odds for the over on the total points line (American odds format)"),
+        bigquery.SchemaField("under_odds", "FLOAT64",
+                             description="Odds for the under on the total points line (American odds format)"),
         bigquery.SchemaField("created_at", "TIMESTAMP",
                              description="Timestamp when this record was created in the database"),
         bigquery.SchemaField("updated_at", "TIMESTAMP",
@@ -53,7 +73,7 @@ def create_games_table(project_id: str, dataset_id: str):
         # Table doesn't exist, create it
         table = bigquery.Table(table_ref, schema=schema)
         # Add table description
-        table.description = "NFL game information including teams, scores, dates, and game attributes."
+        table.description = "NFL game information including teams, scores, starting QBs, and betting odds."
         table = client.create_table(table)
         print("Created Games table.")
 

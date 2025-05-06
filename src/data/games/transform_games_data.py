@@ -62,7 +62,7 @@ def transform_game_data(games_df: pd.DataFrame) -> pd.DataFrame:
     if 'weekday' in df.columns:
         df['primetime_flag'] = df.apply(
             lambda row: True if (
-                pd.notna(row['weekday']) and row['weekday'].upper() in ['Thursday', 'Monday'] or
+                pd.notna(row['weekday']) and row['weekday'].upper() in ['THURSDAY', 'MONDAY'] or
                 (pd.notna(row['gametime']) and '20:' in str(row['gametime']) or '19:' in str(row['gametime']))
             ) else False,
             axis=1
@@ -84,6 +84,24 @@ def transform_game_data(games_df: pd.DataFrame) -> pd.DataFrame:
     # Home and away scores - convert to integers
     df['home_score'] = pd.to_numeric(df['home_score'], errors='coerce').astype('Int64')
     df['away_score'] = pd.to_numeric(df['away_score'], errors='coerce').astype('Int64')
+    
+    # Add QB information
+    if 'home_qb_id' in df.columns:
+        df['home_qb_id'] = df['home_qb_id'].astype(str)
+    
+    if 'away_qb_id' in df.columns:
+        df['away_qb_id'] = df['away_qb_id'].astype(str)
+    
+    # Add betting odds fields - convert to float
+    odds_fields = [
+        'home_moneyline', 'away_moneyline', 'spread_line', 
+        'home_spread_odds', 'away_spread_odds', 'total_line',
+        'over_odds', 'under_odds'
+    ]
+    
+    for field in odds_fields:
+        if field in df.columns:
+            df[field] = pd.to_numeric(df[field], errors='coerce')
     
     # Format timestamp fields for BigQuery
     df['created_at'] = df['created_at'].dt.strftime('%Y-%m-%d %H:%M:%S')
@@ -108,6 +126,16 @@ def transform_game_data(games_df: pd.DataFrame) -> pd.DataFrame:
         'divisional_matchup_flag',
         'home_score',
         'away_score',
+        'home_qb_id',
+        'away_qb_id',
+        'home_moneyline',
+        'away_moneyline',
+        'spread_line',
+        'home_spread_odds',
+        'away_spread_odds',
+        'total_line',
+        'over_odds',
+        'under_odds',
         'created_at',
         'updated_at'
     ]
