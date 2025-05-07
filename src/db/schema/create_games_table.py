@@ -74,6 +74,7 @@ def create_games_table(project_id: str, dataset_id: str):
         table = bigquery.Table(table_ref, schema=schema)
         # Add table description
         table.description = "NFL game information including teams, scores, starting QBs, and betting odds."
+
         table = client.create_table(table)
         print("Created Games table.")
 
