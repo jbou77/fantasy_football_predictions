@@ -6,7 +6,7 @@ import numpy as np
 # Configure logger
 logger = logging.getLogger(__name__)
 
-def transform_game_data(games_df: pd.DataFrame) -> pd.DataFrame:
+def transform_games_data(games_df: pd.DataFrame) -> pd.DataFrame:
     """
     Transform raw game data into the format required for database storage.
     

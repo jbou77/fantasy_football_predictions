@@ -6,15 +6,15 @@ from datetime import datetime
 # Configure logger
 logger = logging.getLogger(__name__)
 
-def collect_game_data(seasons: list[int] = None) -> pd.DataFrame:
+def collect_games_stadiums_teams_data(seasons: list[int] = None) -> pd.DataFrame:
     """
-    Collect game data from NFL data py.
+    Collect NFL schedule data that can be used for Games, Stadiums, and Teams tables.
     
     Args:
         seasons: List of seasons to collect data for. If None, collects last 5 seasons.
         
     Returns:
-        DataFrame containing raw game data
+        DataFrame containing raw NFL schedule data
     """
     if seasons is None:
         current_year = datetime.now().year
@@ -27,8 +27,6 @@ def collect_game_data(seasons: list[int] = None) -> pd.DataFrame:
     games_df = nfl.import_schedules(seasons)
     logger.info(f"Collected data for {len(games_df)} games")
     
-    # Uncomment to export to CSV for inspection
-    # games_df.to_csv("games-data.csv")
     
     # Columns returned by nfl.import_schedules():
     # - game_id         - season         - game_type      - week
