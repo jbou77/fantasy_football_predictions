@@ -23,6 +23,8 @@ def create_players_table(project_id: str, dataset_id: str):
                              description="Player's position (QB, RB, WR, TE, OL, DL, LB, DB, K, P)"),
         bigquery.SchemaField("team_id", "STRING",
                              description="Identifier of the player's current team"),
+        bigquery.SchemaField("team_abbr", "STRING",
+                             description="Abbreviation of the player's current team"),                     
         bigquery.SchemaField("birth_date", "DATE",
                              description="Player's date of birth (YYYY-MM-DD)"),
         bigquery.SchemaField("height", "FLOAT64",
