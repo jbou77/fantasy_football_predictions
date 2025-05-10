@@ -6,12 +6,13 @@ import numpy as np
 # Configure logger
 logger = logging.getLogger(__name__)
 
-def transform_games_data(games_df: pd.DataFrame) -> pd.DataFrame:
+def transform_games_data(games_df: pd.DataFrame, teams_df: pd.DataFrame = None) -> pd.DataFrame:
     """
     Transform raw game data into the format required for database storage.
     
     Args:
         games_df: Raw game DataFrame from NFL data source
+        teams_df: Team descriptions DataFrame from nfl.import_team_desc()
         
     Returns:
         Transformed DataFrame ready for BigQuery upload
@@ -37,11 +38,25 @@ def transform_games_data(games_df: pd.DataFrame) -> pd.DataFrame:
     df['home_team_abbr'] = df['home_team'].astype(str)
     df['away_team_abbr'] = df['away_team'].astype(str)
     
-    # Set team IDs to be the same as abbreviations for now
-    # This will be a placeholder until we establish a proper team mapping
-    # In the future, we would use a separate teams table to map abbreviations to IDs
-    df['home_team_id'] = df['home_team_abbr']
-    df['away_team_id'] = df['away_team_abbr']
+    # Set team IDs based on the teams_df if available
+    if teams_df is not None and not teams_df.empty and 'team_abbr' in teams_df.columns and 'team_id' in teams_df.columns:
+        logger.debug("Using teams_df to set team IDs")
+        
+        # Create a mapping from team abbreviation to team ID
+        team_abbr_to_id = {row['team_abbr']: str(row['team_id']).zfill(4) for _, row in teams_df.iterrows() if pd.notna(row['team_abbr'])}
+        
+        # Map home and away team abbreviations to their IDs
+        df['home_team_id'] = df['home_team_abbr'].map(team_abbr_to_id)
+        df['away_team_id'] = df['away_team_abbr'].map(team_abbr_to_id)
+        
+        # For any teams not found in the mapping, use the abbreviation as a fallback
+        df['home_team_id'] = df['home_team_id'].fillna(df['home_team_abbr'])
+        df['away_team_id'] = df['away_team_id'].fillna(df['away_team_abbr'])
+    else:
+        # If no team mapping available, use abbreviations as IDs
+        logger.debug("No teams_df provided, using team abbreviations as IDs")
+        df['home_team_id'] = df['home_team_abbr']
+        df['away_team_id'] = df['away_team_abbr']
     
     # Process date field
     df['game_date'] = pd.to_datetime(df['gameday'], errors='coerce')

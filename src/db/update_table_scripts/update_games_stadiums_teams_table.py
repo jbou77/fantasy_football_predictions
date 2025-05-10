@@ -29,35 +29,35 @@ def update_games_stadiums_teams_tables(seasons: list[int] = None):
     
     # Step 1: Collect data once for all tables
     logger.info("Collecting NFL data from API")
-    schedules_df = collect_games_stadiums_teams_data(seasons)
-    logger.info(f"Collected data for {len(schedules_df)} games")
+    games_df, teams_df = collect_games_stadiums_teams_data(seasons)
+    logger.info(f"Collected data for {len(games_df)} games and {len(teams_df)} teams")
     
-    # # Step 2: Update Games table
-    logger.info("Updating Games table...")
-    truncate_table(PROJECT_ID, DATASET_ID, "Games")
-    verify_table_empty(PROJECT_ID, DATASET_ID, "Games", fail_if_not_empty=True)
-    
-    transformed_games_df = transform_games_data(schedules_df)
-    upload_games_data(transformed_games_df)
-    logger.info("Games table update completed")
-    
-    # Step 3: Update Stadiums table
-    logger.info("Updating Stadiums table...")
-    truncate_table(PROJECT_ID, DATASET_ID, "Stadiums")
-    verify_table_empty(PROJECT_ID, DATASET_ID, "Stadiums", fail_if_not_empty=True)
-    
-    transformed_stadiums_df = transform_stadiums_data(schedules_df)
-    upload_stadiums_data(transformed_stadiums_df)
-    logger.info("Stadiums table update completed")
-    
-    # Step 4: Update Teams table
+    # Step 2: Update Teams table first (so we have team IDs for the games table)
     logger.info("Updating Teams table...")
     truncate_table(PROJECT_ID, DATASET_ID, "Teams")
     verify_table_empty(PROJECT_ID, DATASET_ID, "Teams", fail_if_not_empty=True)
     
-    transformed_teams_df = transform_teams_data(schedules_df)
+    transformed_teams_df = transform_teams_data(games_df, teams_df)
     upload_teams_data(transformed_teams_df)
     logger.info("Teams table update completed")
+    
+    # Step 3: Update Games table (using team IDs from teams table)
+    logger.info("Updating Games table...")
+    truncate_table(PROJECT_ID, DATASET_ID, "Games")
+    verify_table_empty(PROJECT_ID, DATASET_ID, "Games", fail_if_not_empty=True)
+    
+    transformed_games_df = transform_games_data(games_df, teams_df)
+    upload_games_data(transformed_games_df)
+    logger.info("Games table update completed")
+    
+    # # Step 4: Update Stadiums table
+    logger.info("Updating Stadiums table...")
+    truncate_table(PROJECT_ID, DATASET_ID, "Stadiums")
+    verify_table_empty(PROJECT_ID, DATASET_ID, "Stadiums", fail_if_not_empty=True)
+    
+    transformed_stadiums_df = transform_stadiums_data(games_df)
+    upload_stadiums_data(transformed_stadiums_df)
+    logger.info("Stadiums table update completed")
     
     logger.info("All tables have been successfully updated")
 

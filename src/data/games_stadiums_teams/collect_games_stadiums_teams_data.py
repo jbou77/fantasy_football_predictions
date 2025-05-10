@@ -6,7 +6,7 @@ from datetime import datetime
 # Configure logger
 logger = logging.getLogger(__name__)
 
-def collect_games_stadiums_teams_data(seasons: list[int] = None) -> pd.DataFrame:
+def collect_games_stadiums_teams_data(seasons: list[int] = None) -> tuple:
     """
     Collect NFL schedule data that can be used for Games, Stadiums, and Teams tables.
     
@@ -14,7 +14,7 @@ def collect_games_stadiums_teams_data(seasons: list[int] = None) -> pd.DataFrame
         seasons: List of seasons to collect data for. If None, collects last 5 seasons.
         
     Returns:
-        DataFrame containing raw NFL schedule data
+        Tuple containing (games_df, teams_df)
     """
     if seasons is None:
         current_year = datetime.now().year
@@ -26,7 +26,6 @@ def collect_games_stadiums_teams_data(seasons: list[int] = None) -> pd.DataFrame
     # Use nfl_data_py to get schedules
     games_df = nfl.import_schedules(seasons)
     logger.info(f"Collected data for {len(games_df)} games")
-    
     
     # Columns returned by nfl.import_schedules():
     # - game_id         - season         - game_type      - week
@@ -42,5 +41,29 @@ def collect_games_stadiums_teams_data(seasons: list[int] = None) -> pd.DataFrame
     # - home_qb_name    - away_coach     - home_coach     - referee
     # - stadium_id      - stadium
 
+    # Get team description data
+    try:
+        full_teams_df = nfl.import_team_desc()
+        logger.info(f"Collected data for {len(full_teams_df)} teams")
+        
+        # Keep only the columns we need
+        needed_cols = ['team_abbr', 'team_name', 'team_id', 'team_conf', 'team_division']
+        teams_df = full_teams_df[needed_cols].copy()
+        logger.info(f"Filtered teams data to only include needed columns: {needed_cols}")
+        
+        """ 
+        Columns kept from nfl.import_team_desc():
+        team_abbr - Team abbreviation (e.g., 'ARI', 'KC')
+        team_name - Full team name (e.g., 'Arizona Cardinals')
+        team_id - Team ID
+        team_conf - Conference (e.g., 'NFC', 'AFC')
+        team_division - Division (e.g., 'NFC West', 'AFC East')
+        """
+    except Exception as e:
+        logger.error(f"Error collecting team descriptions: {e}")
+        teams_df = pd.DataFrame()
 
-    return games_df
+    return games_df, teams_df
+
+if __name__ == "__main__":
+    collect_games_stadiums_teams_data()
