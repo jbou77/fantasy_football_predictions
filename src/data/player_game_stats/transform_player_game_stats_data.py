@@ -19,6 +19,18 @@ def transform_player_game_stats_data(weekly_df: pd.DataFrame, game_ids: set) -> 
     """
     logger.debug("Starting transformation of player game stats data")
     
+    # Check if we have a valid dataframe to transform
+    if weekly_df.empty:
+        logger.warning("Received empty DataFrame for transformation, returning empty result")
+        return pd.DataFrame()
+    
+    # Check required columns
+    required_columns = ['player_id', 'game_id']
+    missing_columns = [col for col in required_columns if col not in weekly_df.columns]
+    if missing_columns:
+        logger.error(f"Missing required columns in input data: {missing_columns}")
+        return pd.DataFrame()
+    
     # Create a copy of the dataframe to avoid modifying the original
     df = weekly_df.copy()
     
@@ -30,37 +42,7 @@ def transform_player_game_stats_data(weekly_df: pd.DataFrame, game_ids: set) -> 
     # Process player_id - ensure it's a string
     df['player_id'] = df['player_id'].astype(str)
     
-    # Create game_id that matches the format in game_ids: "YYYY_WW_AWAY_HOME"
-    if 'game_id' not in df.columns:
-        # Process each row to determine correct game_id
-        game_ids_list = []
-        
-        for idx, row in df.iterrows():
-            season = str(row['season'])
-            # Format week with leading zero if needed
-            week = str(row['week']).zfill(2)
-            team1 = row['recent_team']
-            team2 = row['opponent_team']
-            
-            # Try both combinations to determine home/away
-            potential_game_id_1 = f"{season}_{week}_{team1}_{team2}"
-            potential_game_id_2 = f"{season}_{week}_{team2}_{team1}"
-            
-            # Check if either potential game_id exists in the provided set
-            if potential_game_id_1 in game_ids:
-                # In this case, team1 is away, team2 is home
-                game_ids_list.append(potential_game_id_1)
-            elif potential_game_id_2 in game_ids:
-                # In this case, team2 is away, team1 is home
-                game_ids_list.append(potential_game_id_2)
-            else:
-                # If we can't find a match, make our best guess based on a convention
-                # where we'll assume the player's team is listed first when they're away
-                logger.warning(f"No matching game_id found for {season}, week {week}, {team1} vs {team2}. Creating best guess.")
-                game_ids_list.append(f"unknown_{season}_{week}_{team1}_{team2}")
-                
-        df['game_id'] = game_ids_list
-    
+    # Process game_id - ensure it's a string
     df['game_id'] = df['game_id'].astype(str)
     
     # Create a unique stat_id for each record (player_id + game_id combination)
@@ -74,29 +56,38 @@ def transform_player_game_stats_data(weekly_df: pd.DataFrame, game_ids: set) -> 
     
     # Handle snaps data - they might not be in the input data
     # If snaps data is missing, we'll leave it as None for now
-    df['snaps_played'] = None
+    if 'offense_snaps' in df.columns and 'defense_snaps' in df.columns:
+        # Convert to numeric first
+        offense_snaps = pd.to_numeric(df['offense_snaps'], errors='coerce').fillna(0)
+        defense_snaps = pd.to_numeric(df['defense_snaps'], errors='coerce').fillna(0)
+        # Add them together
+        df['snaps_played'] = (offense_snaps + defense_snaps).astype('Int64')
+    else:
+        df['snaps_played'] = None
     
     # Process starter flag - using stats to infer starter status
     # For QBs, consider starter if they had at least 10 passing attempts
     attempts = pd.to_numeric(df.get('attempts', pd.Series([0] * len(df))), errors='coerce').fillna(0)
     carries = pd.to_numeric(df.get('carries', pd.Series([0] * len(df))), errors='coerce').fillna(0)
     targets = pd.to_numeric(df.get('targets', pd.Series([0] * len(df))), errors='coerce').fillna(0)
+    fg_attempts = pd.to_numeric(df.get('fg_attempts', pd.Series([0] * len(df))), errors='coerce').fillna(0)
     
     # Define starter criteria based on position group
     df['starter_flag'] = False
     
     # QBs are starters if they attempted 10+ passes
-    qb_mask = (df['position'] == 'QB') & (attempts >= 10)
+    qb_mask = (df['position_played'] == 'QB') & (attempts >= 10)
     # RBs are starters if they had 8+ carries
-    rb_mask = (df['position'] == 'RB') & (carries >= 8)
+    rb_mask = (df['position_played'] == 'RB') & (carries >= 8)
     # WRs/TEs are starters if they had 4+ targets
-    receiver_mask = (df['position'].isin(['WR', 'TE'])) & (targets >= 4)
+    receiver_mask = (df['position_played'].isin(['WR', 'TE'])) & (targets >= 4)
+    # Kickers are starters if they attempted any field goals or extra points
+    kicker_mask = (df['position_played'] == 'K') & (fg_attempts > 0)
     
     # Combine all starter criteria
-    df.loc[qb_mask | rb_mask | receiver_mask, 'starter_flag'] = True
+    df.loc[qb_mask | rb_mask | receiver_mask | kicker_mask, 'starter_flag'] = True
     
     # Define mapping from input column names to our database schema column names
-    # Most of these names already match from the sample data
     numeric_columns = {
         # Passing stats
         'attempts': 'passing_attempts',
@@ -116,10 +107,6 @@ def transform_player_game_stats_data(weekly_df: pd.DataFrame, game_ids: set) -> 
         'receiving_yards': 'receiving_yards',
         'receiving_tds': 'receiving_tds',
         
-        # Defensive stats - these might not be in the sample data
-        'sacks': 'defensive_sacks',
-        'tackles': 'defensive_tackles',
-        
         # Fumbles
         'sack_fumbles': 'fumbles',
         'rushing_fumbles': 'fumbles',
@@ -127,17 +114,21 @@ def transform_player_game_stats_data(weekly_df: pd.DataFrame, game_ids: set) -> 
         'sack_fumbles_lost': 'fumbles_lost',
         'rushing_fumbles_lost': 'fumbles_lost',
         'receiving_fumbles_lost': 'fumbles_lost',
+        'fumbles': 'fumbles',
+        'fumbles_lost': 'fumbles_lost',
         
-        # Kicking stats - might not be in sample data
+        # Kicking stats
         'fg_attempts': 'field_goals_attempted',
         'fg_made': 'field_goals_made', 
         'pat_attempts': 'extra_points_attempted',
         'pat_made': 'extra_points_made',
         
-        # More defensive stats
+        # Defensive stats
+        'sacks': 'defensive_sacks',
+        'tackles': 'defensive_tackles',
         'solo_tackles': 'solo_tackles',
         'assisted_tackles': 'assisted_tackles',
-        'interceptions_defense': 'defensive_interceptions',
+        'interceptions': 'defensive_interceptions',
         'fumbles_recovered': 'defensive_fumbles_recovered',
         'defensive_tds': 'defensive_tds',
         
@@ -151,23 +142,24 @@ def transform_player_game_stats_data(weekly_df: pd.DataFrame, game_ids: set) -> 
         'special_teams_tds': 'special_teams_tds'
     }
     
-    # Initialize all numeric columns with zeros
-    for _, target_col in numeric_columns.items():
-        if target_col not in df.columns:
-            df[target_col] = 0
+    # Initialize all numeric columns with zeros or None
+    final_numeric_columns = set(numeric_columns.values())
+    for col in final_numeric_columns:
+        if col not in df.columns:
+            df[col] = 0
     
     # Process each numeric column in a vectorized way
     for source_col, target_col in numeric_columns.items():
         if source_col in df.columns:
             # For fumbles and fumbles_lost, we need to aggregate them rather than overwrite
-            if target_col in ['fumbles', 'fumbles_lost']:
-                current_val = pd.to_numeric(df.get(target_col, pd.Series([0] * len(df))), errors='coerce').fillna(0)
+            if target_col in ['fumbles', 'fumbles_lost'] and df[target_col].sum() > 0:
+                current_val = pd.to_numeric(df[target_col], errors='coerce').fillna(0)
                 new_val = pd.to_numeric(df[source_col], errors='coerce').fillna(0)
                 df[target_col] = (current_val + new_val).astype('Int64')
             else:
                 df[target_col] = pd.to_numeric(df[source_col], errors='coerce').fillna(0).astype('Int64')
     
-    # Special handling for defensive tackles if needed
+    # Special handling for defensive tackles if we have the component stats
     if 'solo_tackles' in df.columns and 'assisted_tackles' in df.columns:
         solo = pd.to_numeric(df['solo_tackles'], errors='coerce').fillna(0)
         assisted = pd.to_numeric(df['assisted_tackles'], errors='coerce').fillna(0)
@@ -223,16 +215,17 @@ def transform_player_game_stats_data(weekly_df: pd.DataFrame, game_ids: set) -> 
     ]
     
     # Create the final DataFrame with only the columns we need
-    result_columns = [col for col in final_columns if col in df.columns]
-    result_df = df[result_columns].copy()
+    result_df = pd.DataFrame(columns=final_columns)
     
-    # Check for missing columns and add them
-    missing_columns = set(final_columns) - set(result_columns)
-    for col in missing_columns:
-        result_df[col] = None
-    
-    # Ensure columns are in the correct order
-    result_df = result_df[final_columns]
-    
-    logger.debug(f"Transformation complete. Returning DataFrame with {len(result_df)} rows")
+    # Copy data from the transformed DataFrame to the result DataFrame
+    for col in final_columns:
+        if col in df.columns:
+            result_df[col] = df[col]
+        else:
+            result_df[col] = None
+    # result_df.to_csv('player_game_stats_transformed.csv', index=False)
+    # Drop duplicates based on stat_id (should be unique per player+game)
+    result_df = result_df.drop_duplicates(subset=['stat_id'])
+    # result_df.to_csv('player_game_stats_transformed_deduped.csv', index=False)
+    logger.info(f"Transformation complete. Returning DataFrame with {len(result_df)} rows")
     return result_df
