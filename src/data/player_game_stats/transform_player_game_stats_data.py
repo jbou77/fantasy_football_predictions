@@ -1,7 +1,11 @@
+# src/data/player_game_stats/transform_player_game_stats_data.py
 import pandas as pd
 import numpy as np
 from datetime import datetime
 import logging
+from src.utils.bigquery_helpers import get_bq_client
+from google.cloud import bigquery
+from src.config.settings import DATASET_ID, PROJECT_ID
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -34,6 +38,12 @@ def transform_player_game_stats_data(weekly_df: pd.DataFrame, game_ids: set) -> 
     # Create a copy of the dataframe to avoid modifying the original
     df = weekly_df.copy()
     
+    # Drop any rows with missing player_id or game_id
+    original_count = len(df)
+    df = df.dropna(subset=['player_id', 'game_id'])
+    if len(df) < original_count:
+        logger.warning(f"Dropped {original_count - len(df)} rows with missing player_id or game_id")
+    
     # Add timestamps
     current_time = datetime.now()
     df['created_at'] = current_time
@@ -45,8 +55,130 @@ def transform_player_game_stats_data(weekly_df: pd.DataFrame, game_ids: set) -> 
     # Process game_id - ensure it's a string
     df['game_id'] = df['game_id'].astype(str)
     
+    # Validate game_ids against PlayerSeasons data
+    logger.info("Validating game_ids against player team assignments...")
+    
+    try:
+        # Get data from PlayerSeasons table
+        client = get_bq_client()
+        player_seasons_query = f"""
+        SELECT 
+            player_id, 
+            season_year, 
+            team_abbr
+        FROM `{PROJECT_ID}.{DATASET_ID}.PlayerSeasons`
+        """
+        player_seasons_df = client.query(player_seasons_query).to_dataframe()
+        logger.info(f"Retrieved {len(player_seasons_df)} player-season records for validation")
+        
+        # Create lookup dictionary for player team by season
+        player_team_by_season = {}
+        for _, row in player_seasons_df.iterrows():
+            player_id = str(row['player_id'])
+            season = int(row['season_year'])
+            team = str(row['team_abbr'])
+            
+            if player_id not in player_team_by_season:
+                player_team_by_season[player_id] = {}
+            player_team_by_season[player_id][season] = team
+        
+        # Get game details
+        games_query = f"""
+        SELECT 
+            game_id, 
+            season_year, 
+            week_number,
+            home_team_abbr, 
+            away_team_abbr
+        FROM `{PROJECT_ID}.{DATASET_ID}.Games`
+        """
+        games_df = client.query(games_query).to_dataframe()
+        logger.info(f"Retrieved {len(games_df)} games for validation")
+        
+        # Create game lookup
+        game_details = {}
+        games_by_week = {}
+        
+        for _, game in games_df.iterrows():
+            game_id = str(game['game_id'])
+            season = int(game['season_year'])
+            week = int(game['week_number'])
+            home = str(game['home_team_abbr'])
+            away = str(game['away_team_abbr'])
+            
+            # Store game details
+            game_details[game_id] = {
+                'season': season,
+                'week': week,
+                'teams': [home, away]
+            }
+            
+            # Create lookup by season and week
+            if (season, week) not in games_by_week:
+                games_by_week[(season, week)] = []
+            
+            games_by_week[(season, week)].append({
+                'game_id': game_id,
+                'home_team': home,
+                'away_team': away
+            })
+        
+        # Validate and correct game_ids
+        invalid_count = 0
+        corrected_count = 0
+        
+        for idx, row in df.iterrows():
+            player_id = str(row['player_id'])
+            game_id = str(row['game_id'])
+            
+            # Skip if we don't have the game info
+            if game_id not in game_details:
+                continue
+                
+            season = game_details[game_id]['season']
+            week = game_details[game_id]['week']
+            teams_in_game = game_details[game_id]['teams']
+            
+            # Check if we know what team this player was on in this season
+            if player_id in player_team_by_season and season in player_team_by_season[player_id]:
+                player_team = player_team_by_season[player_id][season]
+                
+                # If player's team wasn't in this game, this is an invalid match
+                if player_team not in teams_in_game:
+                    logger.warning(f"Invalid game match: Player {player_id} (team: {player_team}) " +
+                                  f"matched to game {game_id} with teams {teams_in_game}")
+                    invalid_count += 1
+                    
+                    # Try to find the correct game
+                    if (season, week) in games_by_week:
+                        for game in games_by_week[(season, week)]:
+                            if player_team in [game['home_team'], game['away_team']]:
+                                # Found the correct game!
+                                df.at[idx, 'game_id'] = game['game_id']
+                                corrected_count += 1
+                                break
+                        else:
+                            # No valid game found, mark as invalid
+                            df.at[idx, 'game_id'] = None
+        
+        if invalid_count > 0:
+            logger.warning(f"Found {invalid_count} records with incorrect game_ids")
+            logger.info(f"Successfully corrected {corrected_count} records")
+            
+            # Remove records with invalid game_ids
+            original_count = len(df)
+            df = df[df['game_id'].notna()]
+            logger.info(f"Removed {original_count - len(df)} records with invalid game_ids that couldn't be corrected")
+    
+    except Exception as e:
+        logger.error(f"Error validating game_ids: {e}")
+        logger.warning("Proceeding without game_id validation")
+    
     # Create a unique stat_id for each record (player_id + game_id combination)
     df['stat_id'] = df['player_id'].astype(str) + '_' + df['game_id'].astype(str)
+    
+    # Save intermediate file to inspect
+    df.to_csv('transform_before_dedup.csv', index=False)
     
     # Process team_id - use recent_team as team_id
     df['team_id'] = df['recent_team'].astype(str)
@@ -128,7 +260,7 @@ def transform_player_game_stats_data(weekly_df: pd.DataFrame, game_ids: set) -> 
         'tackles': 'defensive_tackles',
         'solo_tackles': 'solo_tackles',
         'assisted_tackles': 'assisted_tackles',
-        'interceptions': 'defensive_interceptions',
+        'def_interceptions': 'defensive_interceptions',
         'fumbles_recovered': 'defensive_fumbles_recovered',
         'defensive_tds': 'defensive_tds',
         
@@ -223,9 +355,8 @@ def transform_player_game_stats_data(weekly_df: pd.DataFrame, game_ids: set) -> 
             result_df[col] = df[col]
         else:
             result_df[col] = None
-    # result_df.to_csv('player_game_stats_transformed.csv', index=False)
+    
     # Drop duplicates based on stat_id (should be unique per player+game)
     result_df = result_df.drop_duplicates(subset=['stat_id'])
-    # result_df.to_csv('player_game_stats_transformed_deduped.csv', index=False)
     logger.info(f"Transformation complete. Returning DataFrame with {len(result_df)} rows")
     return result_df
