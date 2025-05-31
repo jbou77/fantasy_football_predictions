@@ -48,6 +48,7 @@ def update_player_game_stats_table(seasons: list[int] = None):
     upload_player_game_stats_data(transformed_df)
     
     logger.info("PlayerGameStats table update completed successfully")
+    
 
 if __name__ == "__main__":
     # Configure logging
